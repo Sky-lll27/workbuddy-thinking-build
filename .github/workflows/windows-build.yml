@@ -21,7 +21,7 @@ jobs:
       - name: Format validation
         shell: pwsh
         run: |
-          gofmt -w thinkingdefaults.go thinkingdefaults_test.go debug.go runtimeconfig.go outboundcompat.go webui.go main.go
+          gofmt -w .
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $unformatted = @(gofmt -l .)
           if ($unformatted.Count -gt 0) { $unformatted; throw "Go files must be formatted" }
