@@ -1,0 +1,60 @@
+name: Windows thinking build
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Format validation
+        shell: pwsh
+        run: |
+          gofmt -w thinkingdefaults.go thinkingdefaults_test.go debug.go runtimeconfig.go outboundcompat.go webui.go main.go
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $unformatted = @(gofmt -l .)
+          if ($unformatted.Count -gt 0) { $unformatted; throw "Go files must be formatted" }
+      - name: Go checks
+        shell: pwsh
+        run: |
+          go vet ./...
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          go test -count=1 -timeout 10m ./...
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Web checks
+        shell: pwsh
+        run: |
+          node --check web/app.js
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node --test tests/web/app.test.cjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Build Windows executable
+        shell: pwsh
+        env:
+          CGO_ENABLED: "0"
+          GOOS: windows
+          GOARCH: amd64
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          go build -trimpath -o dist/workbuddy-gateway.exe .
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ./dist/workbuddy-gateway.exe version
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          (Get-FileHash dist/workbuddy-gateway.exe -Algorithm SHA256).Hash.ToLower() + "  workbuddy-gateway.exe" | Set-Content -Encoding utf8 dist/SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: workbuddy-gateway-windows-thinking
+          path: dist/
+          retention-days: 7
+          if-no-files-found: error
